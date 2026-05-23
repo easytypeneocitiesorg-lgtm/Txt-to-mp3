@@ -1,18 +1,29 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>TXT to MP3 Converter</title>
+  <title>TXT To MP3</title>
 
   <style>
     body{
-      background:black;
-      color:white;
+      background:#000;
+      color:#fff;
       font-family:Arial;
       padding:20px;
     }
 
+    h1{
+      margin-bottom:10px;
+    }
+
+    .box{
+      background:#111;
+      border:1px solid #333;
+      padding:15px;
+      margin-top:15px;
+    }
+
     input{
-      margin-top:20px;
+      margin-top:15px;
     }
 
     button{
@@ -24,13 +35,6 @@
       cursor:pointer;
       font-size:16px;
     }
-
-    .box{
-      background:#111;
-      padding:20px;
-      border:1px solid #333;
-      margin-top:20px;
-    }
   </style>
 </head>
 <body>
@@ -38,20 +42,36 @@
 <h1>TXT to MP3 Converter</h1>
 
 <p>
-Upload a .txt file like this:
+Upload a TXT file with frequencies:
 </p>
 
 <div class="box">
-frequency=440<br>
-volume=0.5<br>
-duration=2<br>
-waveform=sine
+440<br>
+660<br>
+880<br>
+330
 </div>
 
 <input
   type="file"
   id="fileInput"
   accept=".txt"
+/>
+
+<br>
+
+<label>
+Length Per Note (seconds):
+</label>
+
+<br>
+
+<input
+  type="number"
+  id="lengthInput"
+  value="1"
+  step="0.1"
+  min="0.1"
 />
 
 <br>
@@ -63,52 +83,15 @@ Generate MP3
 <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
 
 <script>
-function parseSettings(text){
-
-  const settings = {
-    frequency: 440,
-    volume: 0.5,
-    duration: 2,
-    waveform: "sine"
-  };
-
-  const lines = text.split("\n");
-
-  for(const line of lines){
-
-    const parts = line.split("=");
-
-    if(parts.length < 2) continue;
-
-    const key = parts[0].trim();
-    const value = parts[1].trim();
-
-    if(key === "frequency"){
-      settings.frequency = Number(value);
-    }
-
-    if(key === "volume"){
-      settings.volume = Number(value);
-    }
-
-    if(key === "duration"){
-      settings.duration = Number(value);
-    }
-
-    if(key === "waveform"){
-      settings.waveform = value;
-    }
-  }
-
-  return settings;
-}
-
-function generateWave(settings){
+function generateTone(
+  frequency,
+  duration
+){
 
   const sampleRate = 44100;
 
   const samples =
-    sampleRate * settings.duration;
+    sampleRate * duration;
 
   const pcm =
     new Int16Array(samples);
@@ -117,45 +100,41 @@ function generateWave(settings){
 
     const t = i / sampleRate;
 
-    let wave = 0;
+    const wave =
+      Math.sin(
+        2 *
+        Math.PI *
+        frequency *
+        t
+      );
 
-    if(settings.waveform === "square"){
-
-      wave =
-        Math.sin(
-          2 * Math.PI *
-          settings.frequency *
-          t
-        ) > 0 ? 1 : -1;
-
-    } else if(settings.waveform === "triangle"){
-
-      wave =
-        Math.asin(
-          Math.sin(
-            2 * Math.PI *
-            settings.frequency *
-            t
-          )
-        ) * (2 / Math.PI);
-
-    } else {
-
-      wave =
-        Math.sin(
-          2 * Math.PI *
-          settings.frequency *
-          t
-        );
-    }
-
-    pcm[i] =
-      wave *
-      32767 *
-      settings.volume;
+    pcm[i] = wave * 32767 * 0.5;
   }
 
   return pcm;
+}
+
+function mergeBuffers(buffers){
+
+  let totalLength = 0;
+
+  for(const b of buffers){
+    totalLength += b.length;
+  }
+
+  const merged =
+    new Int16Array(totalLength);
+
+  let offset = 0;
+
+  for(const b of buffers){
+
+    merged.set(b, offset);
+
+    offset += b.length;
+  }
+
+  return merged;
 }
 
 function pcmToMp3(pcm){
@@ -198,7 +177,7 @@ function pcmToMp3(pcm){
     mp3Data.push(end);
   }
 
-  return new Blob(mp3Data, {
+  return new Blob(mp3Data,{
     type:"audio/mp3"
   });
 }
@@ -211,10 +190,17 @@ function generateAudio(){
 
   if(!file){
 
-    alert("Upload a TXT file first.");
+    alert("Upload a TXT file.");
 
     return;
   }
+
+  const noteLength =
+    Number(
+      document.getElementById(
+        "lengthInput"
+      ).value
+    );
 
   const reader =
     new FileReader();
@@ -224,14 +210,37 @@ function generateAudio(){
     const text =
       e.target.result;
 
-    const settings =
-      parseSettings(text);
+    const lines =
+      text.split("\n");
 
-    const pcm =
-      generateWave(settings);
+    const buffers = [];
+
+    for(let line of lines){
+
+      line = line.trim();
+
+      if(line === "") continue;
+
+      const frequency =
+        Number(line);
+
+      if(isNaN(frequency))
+        continue;
+
+      const tone =
+        generateTone(
+          frequency,
+          noteLength
+        );
+
+      buffers.push(tone);
+    }
+
+    const merged =
+      mergeBuffers(buffers);
 
     const mp3 =
-      pcmToMp3(pcm);
+      pcmToMp3(merged);
 
     const url =
       URL.createObjectURL(mp3);
