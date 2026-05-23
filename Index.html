@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TXT to MP3 Converter</title>
+
+  <style>
+    body{
+      background:black;
+      color:white;
+      font-family:Arial;
+      padding:20px;
+    }
+
+    input{
+      margin-top:20px;
+    }
+
+    button{
+      margin-top:20px;
+      padding:10px 20px;
+      background:white;
+      color:black;
+      border:none;
+      cursor:pointer;
+      font-size:16px;
+    }
+
+    .box{
+      background:#111;
+      padding:20px;
+      border:1px solid #333;
+      margin-top:20px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>TXT to MP3 Converter</h1>
+
+<p>
+Upload a .txt file like this:
+</p>
+
+<div class="box">
+frequency=440<br>
+volume=0.5<br>
+duration=2<br>
+waveform=sine
+</div>
+
+<input
+  type="file"
+  id="fileInput"
+  accept=".txt"
+/>
+
+<br>
+
+<button onclick="generateAudio()">
+Generate MP3
+</button>
+
+<script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+
+<script>
+function parseSettings(text){
+
+  const settings = {
+    frequency: 440,
+    volume: 0.5,
+    duration: 2,
+    waveform: "sine"
+  };
+
+  const lines = text.split("\n");
+
+  for(const line of lines){
+
+    const parts = line.split("=");
+
+    if(parts.length < 2) continue;
+
+    const key = parts[0].trim();
+    const value = parts[1].trim();
+
+    if(key === "frequency"){
+      settings.frequency = Number(value);
+    }
+
+    if(key === "volume"){
+      settings.volume = Number(value);
+    }
+
+    if(key === "duration"){
+      settings.duration = Number(value);
+    }
+
+    if(key === "waveform"){
+      settings.waveform = value;
+    }
+  }
+
+  return settings;
+}
+
+function generateWave(settings){
+
+  const sampleRate = 44100;
+
+  const samples =
+    sampleRate * settings.duration;
+
+  const pcm =
+    new Int16Array(samples);
+
+  for(let i = 0; i < samples; i++){
+
+    const t = i / sampleRate;
+
+    let wave = 0;
+
+    if(settings.waveform === "square"){
+
+      wave =
+        Math.sin(
+          2 * Math.PI *
+          settings.frequency *
+          t
+        ) > 0 ? 1 : -1;
+
+    } else if(settings.waveform === "triangle"){
+
+      wave =
+        Math.asin(
+          Math.sin(
+            2 * Math.PI *
+            settings.frequency *
+            t
+          )
+        ) * (2 / Math.PI);
+
+    } else {
+
+      wave =
+        Math.sin(
+          2 * Math.PI *
+          settings.frequency *
+          t
+        );
+    }
+
+    pcm[i] =
+      wave *
+      32767 *
+      settings.volume;
+  }
+
+  return pcm;
+}
+
+function pcmToMp3(pcm){
+
+  const mp3encoder =
+    new lamejs.Mp3Encoder(
+      1,
+      44100,
+      128
+    );
+
+  const mp3Data = [];
+
+  const blockSize = 1152;
+
+  for(
+    let i = 0;
+    i < pcm.length;
+    i += blockSize
+  ){
+
+    const chunk =
+      pcm.subarray(
+        i,
+        i + blockSize
+      );
+
+    const mp3buf =
+      mp3encoder.encodeBuffer(chunk);
+
+    if(mp3buf.length > 0){
+      mp3Data.push(mp3buf);
+    }
+  }
+
+  const end =
+    mp3encoder.flush();
+
+  if(end.length > 0){
+    mp3Data.push(end);
+  }
+
+  return new Blob(mp3Data, {
+    type:"audio/mp3"
+  });
+}
+
+function generateAudio(){
+
+  const file =
+    document.getElementById("fileInput")
+    .files[0];
+
+  if(!file){
+
+    alert("Upload a TXT file first.");
+
+    return;
+  }
+
+  const reader =
+    new FileReader();
+
+  reader.onload = function(e){
+
+    const text =
+      e.target.result;
+
+    const settings =
+      parseSettings(text);
+
+    const pcm =
+      generateWave(settings);
+
+    const mp3 =
+      pcmToMp3(pcm);
+
+    const url =
+      URL.createObjectURL(mp3);
+
+    const a =
+      document.createElement("a");
+
+    a.href = url;
+
+    a.download = "output.mp3";
+
+    a.click();
+  };
+
+  reader.readAsText(file);
+}
+</script>
+
+</body>
+</html>
