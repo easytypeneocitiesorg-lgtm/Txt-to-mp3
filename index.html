@@ -1,18 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>TXT To MP3</title>
+  <title>TXT to MP3</title>
 
   <style>
     body{
-      background:#000;
-      color:#fff;
+      background:black;
+      color:white;
       font-family:Arial;
       padding:20px;
-    }
-
-    h1{
-      margin-bottom:10px;
     }
 
     .box{
@@ -20,10 +16,7 @@
       border:1px solid #333;
       padding:15px;
       margin-top:15px;
-    }
-
-    input{
-      margin-top:15px;
+      white-space:pre-line;
     }
 
     button{
@@ -35,6 +28,10 @@
       cursor:pointer;
       font-size:16px;
     }
+
+    input{
+      margin-top:20px;
+    }
   </style>
 </head>
 <body>
@@ -42,36 +39,36 @@
 <h1>TXT to MP3 Converter</h1>
 
 <p>
-Upload a TXT file with frequencies:
+Upload a TXT file formatted like this:
 </p>
 
-<div class="box">
-440<br>
-660<br>
-880<br>
-330
+<div class="box">440
+sine
+2
+
+880
+square
+1
+
+220
+triangle
+3
 </div>
+
+<p>
+Format:
+<br><br>
+frequency
+<br>
+waveform
+<br>
+seconds
+</p>
 
 <input
   type="file"
   id="fileInput"
   accept=".txt"
-/>
-
-<br>
-
-<label>
-Length Per Note (seconds):
-</label>
-
-<br>
-
-<input
-  type="number"
-  id="lengthInput"
-  value="1"
-  step="0.1"
-  min="0.1"
 />
 
 <br>
@@ -83,8 +80,10 @@ Generate MP3
 <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
 
 <script>
-function generateTone(
+
+function createTone(
   frequency,
+  waveform,
   duration
 ){
 
@@ -100,15 +99,58 @@ function generateTone(
 
     const t = i / sampleRate;
 
-    const wave =
-      Math.sin(
-        2 *
-        Math.PI *
-        frequency *
-        t
-      );
+    let wave = 0;
 
-    pcm[i] = wave * 32767 * 0.5;
+    if(waveform === "square"){
+
+      wave =
+        Math.sin(
+          2 *
+          Math.PI *
+          frequency *
+          t
+        ) > 0 ? 1 : -1;
+
+    }
+    else if(waveform === "triangle"){
+
+      wave =
+        Math.asin(
+          Math.sin(
+            2 *
+            Math.PI *
+            frequency *
+            t
+          )
+        ) * (2 / Math.PI);
+
+    }
+    else if(waveform === "sawtooth"){
+
+      wave =
+        2 * (
+          frequency * t -
+          Math.floor(
+            frequency * t + 0.5
+          )
+        );
+
+    }
+    else{
+
+      wave =
+        Math.sin(
+          2 *
+          Math.PI *
+          frequency *
+          t
+        );
+    }
+
+    pcm[i] =
+      wave *
+      32767 *
+      0.5;
   }
 
   return pcm;
@@ -139,7 +181,7 @@ function mergeBuffers(buffers){
 
 function pcmToMp3(pcm){
 
-  const mp3encoder =
+  const encoder =
     new lamejs.Mp3Encoder(
       1,
       44100,
@@ -163,15 +205,14 @@ function pcmToMp3(pcm){
       );
 
     const mp3buf =
-      mp3encoder.encodeBuffer(chunk);
+      encoder.encodeBuffer(chunk);
 
     if(mp3buf.length > 0){
       mp3Data.push(mp3buf);
     }
   }
 
-  const end =
-    mp3encoder.flush();
+  const end = encoder.flush();
 
   if(end.length > 0){
     mp3Data.push(end);
@@ -185,22 +226,18 @@ function pcmToMp3(pcm){
 function generateAudio(){
 
   const file =
-    document.getElementById("fileInput")
-    .files[0];
+    document.getElementById(
+      "fileInput"
+    ).files[0];
 
   if(!file){
 
-    alert("Upload a TXT file.");
+    alert(
+      "Upload a TXT file first."
+    );
 
     return;
   }
-
-  const noteLength =
-    Number(
-      document.getElementById(
-        "lengthInput"
-      ).value
-    );
 
   const reader =
     new FileReader();
@@ -211,26 +248,40 @@ function generateAudio(){
       e.target.result;
 
     const lines =
-      text.split("\n");
+      text
+      .split("\n")
+      .map(x => x.trim())
+      .filter(x => x !== "");
 
     const buffers = [];
 
-    for(let line of lines){
-
-      line = line.trim();
-
-      if(line === "") continue;
+    for(
+      let i = 0;
+      i < lines.length;
+      i += 3
+    ){
 
       const frequency =
-        Number(line);
+        Number(lines[i]);
 
-      if(isNaN(frequency))
+      const waveform =
+        lines[i + 1];
+
+      const duration =
+        Number(lines[i + 2]);
+
+      if(
+        isNaN(frequency) ||
+        isNaN(duration)
+      ){
         continue;
+      }
 
       const tone =
-        generateTone(
+        createTone(
           frequency,
-          noteLength
+          waveform,
+          duration
         );
 
       buffers.push(tone);
@@ -250,13 +301,15 @@ function generateAudio(){
 
     a.href = url;
 
-    a.download = "output.mp3";
+    a.download =
+      "output.mp3";
 
     a.click();
   };
 
   reader.readAsText(file);
 }
+
 </script>
 
 </body>
